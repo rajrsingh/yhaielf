@@ -198,13 +198,15 @@ def expense_job():
   session = getsession()
   # userid = 'auth0|5b021d905d7d1617fd7dfadb'
   for user in session.query(User):
+    userid = user.id
     success = compute_expenses(userid, session)
     success = compute_projected_spend(userid, session)
     success = projected_spend_to_budgets(userid, session)
   session.close()
   applog({"msg":"success", "service":"aielf", "function":"expense_job"})
 
-schedule.every().day.at("10:30").do(expense_job)
+# expense_job()
+schedule.every().day.at("11:30").do(expense_job)
 
 while True:
   schedule.run_pending()
