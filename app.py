@@ -1,4 +1,4 @@
-import os, datetime, time, json
+import os, datetime, time, json, schedule
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.sql import label
 from sqlalchemy import create_engine, func
@@ -7,6 +7,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from models import *
 
 engine = create_engine('postgresql+psycopg2://%s:%s@%s/%s' % (os.environ['DBUSER'], os.environ['DBPASS'], os.environ['DBHOST'], os.environ['DBNAME']))
+MONTHS_MEASURED = 4
 
 def mkDateTime(dateString,strFormat="%Y-%m-%d"):
   # Expects "YYYY-MM-DD" string
@@ -50,80 +51,25 @@ def getsession():
   return Session()
 
 def applog(json_msg):
+  session = getsession()
   dbmsg = Logger(jsonmsg=json_msg)
-  DB.session.add(dbmsg)
-  DB.session.commit()
+  session.add(dbmsg)
+  session.commit()
+  session.close()
 
-
-def calcinc(userid):
-  """ Calculates user income """
-  # TODO: check if user exists
-  # TODO: data validation
-  from decimal import Decimal
-  SIMILARITY_PCT = Decimal(0.125)
-  NUM_MONTHS = 3
-
-  user = User.query.get(userid)
-  if not user:
-    return jsonify({"success":False, "msg": "could not find user id " + userid})
-
-  items = DB.session.query(Item).filter_by(user_id=user.id)
-  itemlist = []
-  for item in items:
-    itemlist.append(item.item_id)
-  if len(itemlist)<1:
-    return jsonify({"success":False, "msg": "no items for user id " + user.id})
-
-  endday = datetime.datetime.today() - datetime.timedelta(days=1)
-  end = endday.strftime('%Y-%m-%d')
-  start = (endday - datetime.timedelta(days=(NUM_MONTHS*31))).strftime('%Y-%m-%d')
-
-  incomes = []
-  for itemid in itemlist:
-    transactions = DB.session.query(Transaction).\
-      filter(Transaction.item_id.like(itemid)).\
-      filter(Transaction.category_id.like('21007000')).\
-      filter(Transaction.t_date >= start).\
-      filter(Transaction.t_date <= end).\
-      all()
-    for transaction in transactions:
-      amt = transaction.amount * -1
-      incomes.append(amt)
-  
-  goodlist = []
-  i = 0
-  while i<len(incomes):
-    v = incomes[i]
-    j = 0
-    goodcount = 0
-    while j<len(incomes):
-      if i != j:
-        if incomes[j] >= (v-(v*SIMILARITY_PCT)) and incomes[j] <= (v+(v*SIMILARITY_PCT)):
-          goodcount = goodcount + 1
-      j = j + 1
-    if goodcount > 3:
-      goodlist.append(incomes[i])
-    i = i + 1
-
-  income = 0
-  for g in goodlist:
-    income = income + g
-  income_monthly = income / NUM_MONTHS
-  user.income = income_monthly
-  user.income_update = datetime.datetime.today()
-  DB.session.commit()
-  
-  return jsonify({"success":True, "income": str(income_monthly)})
 
 def compute_expenses(userid, session):
   session = getsession()
 
-  # get oldest transaction date
-  t = session.query(Transaction).order_by(Transaction.t_date.asc()).limit(1).first()
-  startdate = mkFirstOfNextMonth(t.t_date)
+  ## get oldest transaction date
+  # t = session.query(Transaction).order_by(Transaction.t_date.asc()).limit(1).first()
+  # startdate = mkFirstOfNextMonth(t.t_date)
   # get latest transaction date
   t = session.query(Transaction).order_by(Transaction.t_date.desc()).limit(1).first()
   endate = (t.t_date)
+  ## get date 4 months ago
+  startdate = mkFirstOfMonth(endate) - relativedelta(months=MONTHS_MEASURED)
+
 
   item_ids = []
   itemrecs = session.query(Item).filter(Item.user_id.like(userid)).all()
@@ -158,7 +104,6 @@ def compute_expenses(userid, session):
   return True
 
 def compute_projected_spend(userid, session):
-  MONTHS_MEASURED = 4
   ## delete old data
   session.commit()
   session.query(AverageMonthSpend).filter(AverageMonthSpend.user_id.like(userid)).delete(synchronize_session='fetch')
@@ -249,14 +194,18 @@ def projected_spend_to_budgets(userid, session):
   flag_modified(user, "spending")
   session.commit()
 
+def expense_job():
+  session = getsession()
+  # userid = 'auth0|5b021d905d7d1617fd7dfadb'
+  for user in session.query(User):
+    success = compute_expenses(userid, session)
+    success = compute_projected_spend(userid, session)
+    success = projected_spend_to_budgets(userid, session)
+  session.close()
+  applog({"msg":"success", "service":"aielf", "function":"expense_job"})
 
+schedule.every().day.at("10:30").do(expense_job)
 
-
-session = getsession()
-
-# for user in session.query(User):
-userid = 'auth0|5b021d905d7d1617fd7dfadb'
-# success = compute_expenses(userid, session)
-success = compute_projected_spend(userid, session)
-success = projected_spend_to_budgets(userid, session)
-session.close()
+while True:
+  schedule.run_pending()
+  time.sleep(100)

@@ -1,0 +1,13 @@
+---
+applications:
+- name: aielf
+  no-route: true
+  memory: 768M
+  disk_quota: 768M
+  command: python app.py
+  path: .
+  env:
+    DBUSER: x
+    DBPASS: x
+    DBHOST: www.x.com
+    DBNAME: x
