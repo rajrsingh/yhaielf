@@ -2,6 +2,7 @@
 applications:
 - name: aielf
   no-route: true
+  health-check-type: process
   memory: 768M
   disk_quota: 768M
   command: python app.py
