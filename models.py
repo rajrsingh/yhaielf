@@ -2,6 +2,8 @@ import datetime
 from sqlalchemy import Column, Text, Date, BigInteger, DateTime, Integer, Numeric, String, ARRAY, BOOLEAN, JSON, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 
+__name__ = 'models'
+
 Base = declarative_base()
 
 class User(Base):
@@ -17,8 +19,6 @@ class User(Base):
         personal_update = Column(DateTime())
         income = Column(BigInteger())
         income_update = Column(DateTime())
-        budgets = Column(JSON)
-        budgets_update = Column(DateTime())
         spending = Column(JSON)
         spending_update = Column(DateTime())
         goals = Column(JSON)
@@ -52,8 +52,10 @@ class Transaction(Base):
     category = Column(ARRAY(String))
     category_id = Column(Text())
     category_uid = Column(Text())
-    lat = Column(Numeric(12,6), default=None)
-    lon = Column(Numeric(12,6), default=None)
+    address = Column(Text(), default=None)
+    city = Column(Text(), default=None)
+    state = Column(Text(), default=None)
+    zipcode = Column(Text(), default=None)
     pending = Column(BOOLEAN(), default=False)
     pending_trans_id = Column(Text(), default=None)
     refnum = Column(Text())
