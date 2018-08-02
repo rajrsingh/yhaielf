@@ -59,6 +59,8 @@ def applog(json_msg):
 
 
 def compute_expenses(userid, session):
+  """ Compute spending per period over the last 4 months for every transaction category and save to DB """
+
   session = getsession()
 
   ## get oldest transaction date
@@ -70,15 +72,15 @@ def compute_expenses(userid, session):
   ## get date 4 months ago
   startdate = mkFirstOfMonth(endate) - relativedelta(months=MONTHS_MEASURED)
 
-
+  # get all the user's item ids
   item_ids = []
   itemrecs = session.query(Item).filter(Item.user_id.like(userid)).all()
   for ir in itemrecs:
     item_ids.append(ir.item_id)
 
-  daybreaks = mkDayBreaks(startdate)
-  while daybreaks[4] < endate:
-    for i in range(4):
+  daybreaks = mkDayBreaks(startdate) # [1st, 9th, 17th, 25th, 1st]
+  while daybreaks[4] <= endate: # handle a month at a time
+    for i in range(4): # handle a pillarperiod at a time
       queries = []
       queries.append( Transaction.t_date >= daybreaks[i] )
       queries.append( Transaction.t_date < daybreaks[i+1] )
@@ -104,6 +106,8 @@ def compute_expenses(userid, session):
   return True
 
 def compute_projected_spend(userid, session):
+  """ Compute average spending per period for every transaction category and save to DB """
+
   ## delete old data
   session.commit()
   session.query(AverageMonthSpend).filter(AverageMonthSpend.user_id.like(userid)).delete(synchronize_session='fetch')
@@ -156,7 +160,11 @@ def compute_projected_spend(userid, session):
   return True
 
 def projected_spend_to_budgets(userid, session):
+  """ Aggregate average spending per category, per period up to the categories in the user's budgets """
+
   user = session.query(User).get(userid)
+  if not user.spending or not 'budgets' in user.spending:
+    return False
   spending = user.spending
   ## build a list of categories in budgets to skip when computing budget for other
   budget_categories = []
@@ -191,8 +199,76 @@ def projected_spend_to_budgets(userid, session):
   spending['projectedspend'] = projectedspending
   # print (spending)
   user.spending = spending
+  user.spending_update = datetime.datetime.today()
   flag_modified(user, "spending")
   session.commit()
+
+def compute_income(userid, session):
+  """ calculate user's monthly and pillarperiod income """
+  t = session.query(Transaction).order_by(Transaction.t_date.desc()).limit(1).first()
+  endate = (t.t_date)
+  ##get date 4 months ago
+  startdate = mkFirstOfMonth(endate) - relativedelta(months=MONTHS_MEASURED)
+
+  # get all the user's item ids
+  item_ids = []
+  itemrecs = session.query(Item).filter(Item.user_id.like(userid)).all()
+  for ir in itemrecs:
+    item_ids.append(ir.item_id)
+
+  allincomes = []
+  daybreaks = mkDayBreaks(startdate) # [1st, 9th, 17th, 25th, 1st]
+  while daybreaks[4] <= endate: # handle a month at a time
+    periodincomes = []
+    for i in range(4): # handle a pillarperiod at a time
+      queries = []
+      queries.append( Transaction.t_date >= daybreaks[i] )
+      queries.append( Transaction.t_date < daybreaks[i+1] )
+      queries.append( Transaction.amount < 0 )
+      queries.append( Transaction.item_id.in_(item_ids) )
+      # count anything in Plaid category Transfer > Deposit as income
+      queries.append( Transaction.category_uid.like("21007000") )
+      # q = session.query(Transaction.category_uid, func.sum(Transaction.amount))
+      q = session.query( func.sum(Transaction.amount) )
+      q = q.filter(*queries)#.group_by(Transaction.category_uid).all()
+      sumrec = q.first()
+      # from sqlalchemy.dialects import postgresql
+      # statement = q.statement
+      # print("SQL: ")
+      # print(statement.compile(dialect=postgresql.dialect()))
+      inc = 0
+      if sumrec[0] is not None:
+        inc = -1 * int(sumrec[0]) # make the amount positive
+        print('Income from %s to %s: %d' % (formatDate(daybreaks[i]), formatDate(daybreaks[i+1]), inc) )
+      # put period's income into table
+      periodincomes.append( inc )
+      # save period's income to DB
+      a = ActualMonthIncome( user_id=userid, start_date=daybreaks[i], amount=inc, period=i+1 )
+      session.merge( a )
+
+    allincomes.append( periodincomes )
+    daybreaks = mkDayBreaks( daybreaks[4] )
+    session.commit()
+
+  # Compute average monthly income by period using allincomes list
+  # (which is a 4 periods x 4 MONTHS_MEASURED list) and save to DB
+  total_avg_inc = 0
+  for i in range(MONTHS_MEASURED):
+    periodinc = 0
+    for inc in allincomes:
+      periodinc += inc[i]
+    avg_inc = int( periodinc / MONTHS_MEASURED )
+    a = AverageMonthIncome( user_id=userid, amount=avg_inc, period=i+1 )
+    session.merge( a )
+    total_avg_inc += avg_inc
+
+  # Save average monthly income to user profile
+  user = session.query(User).get(userid)
+  user.income = int(total_avg_inc)
+  user.income_update = datetime.datetime.today()
+  session.commit()
+
+  return True
 
 def expense_job():
   session = getsession()
@@ -203,10 +279,21 @@ def expense_job():
     success = compute_projected_spend(userid, session)
     success = projected_spend_to_budgets(userid, session)
   session.close()
-  applog({"msg":"success", "service":"aielf", "function":"expense_job"})
+  applog( {"msg":"success", "service":"aielf", "function":"expense_job"} )
 
-# expense_job()
-schedule.every().day.at("11:30").do(expense_job)
+def income_job():
+  session = getsession()
+  userid = 'auth0|5b021d905d7d1617fd7dfadb'
+  success = compute_income(userid, session)
+  # for user in session.query(User):
+  #   userid = user.id
+  #   success = compute_income(userid, session)
+  session.close()
+  applog( {"msg":"success", "service":"aielf", "function":"income_job"} )
+
+# income_job()
+schedule.every().day.at("11:35").do(expense_job)
+schedule.every().sunday.at("04:24").do(income_job)
 
 while True:
   schedule.run_pending()

@@ -96,3 +96,20 @@ class AverageMonthSpend(Base):
     category_uid = Column(Text(), primary_key=True)
     amount = Column(Numeric(12,2), nullable=False)
     period = Column(Integer, primary_key=True)
+
+class ActualMonthIncome(Base):
+    """Database model to track weekly income"""
+
+    __tablename__ = 'actualmonthincome'
+    user_id = Column(Text(), ForeignKey('users.id'), primary_key=True)
+    start_date = Column(DateTime(), nullable=False, primary_key=True)
+    amount = Column(Numeric(12,2), nullable=False)
+    period = Column(Integer)
+
+class AverageMonthIncome(Base):
+    """Database model to track average spending per week of month"""
+
+    __tablename__ = 'avgmonthincome'
+    user_id = Column(Text(), ForeignKey('users.id'), primary_key=True)
+    amount = Column(Numeric(12,2), nullable=False)
+    period = Column(Integer, primary_key=True)
