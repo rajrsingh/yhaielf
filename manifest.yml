@@ -2,6 +2,13 @@
 applications:
 - name: aielf
   no-route: true
-  memory: 256M
-  disk_quota: 128M
+  health-check-type: process
+  memory: 768M
+  disk_quota: 768M
+  command: python app.py
   path: .
+  env:
+    DBUSER: dbuser
+    DBPASS: dbpw
+    DBHOST: hostwnohttp
+    DBNAME: databasename
