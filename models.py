@@ -23,6 +23,8 @@ class User(Base):
         spending_update = Column(DateTime())
         goals = Column(JSON)
         goals_update = Column(DateTime())
+        notices = Column(JSON)
+        notices_update = Column(DateTime())
         categories = Column(JSON)
         categories_update = Column(DateTime())
         catrules = Column(JSON)

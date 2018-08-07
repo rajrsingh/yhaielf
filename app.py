@@ -5,6 +5,7 @@ from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
 from models import *
+from samplegoals import *
 
 engine = create_engine('postgresql+psycopg2://%s:%s@%s/%s' % (os.environ['DBUSER'], os.environ['DBPASS'], os.environ['DBHOST'], os.environ['DBNAME']))
 MONTHS_MEASURED = 4
@@ -50,13 +51,11 @@ def getsession():
   Session = sessionmaker(bind=engine)
   return Session()
 
-def applog(json_msg):
-  session = getsession()
+def applog(json_msg, session):
+  """ make sure you have a running session """
   dbmsg = Logger(jsonmsg=json_msg)
   session.add(dbmsg)
   session.commit()
-  session.close()
-
 
 def compute_expenses(userid, session):
   """ Compute spending per period over the last 4 months for every transaction category and save to DB """
@@ -166,10 +165,11 @@ def projected_spend_to_budgets(userid, session):
   if not user.spending or not 'budgets' in user.spending:
     return False
   spending = user.spending
-  ## build a list of categories in budgets to skip when computing budget for other
+  ## build a list of categories in budgets to skip 
+  ## when computing budget for Unbudgeted
   budget_categories = []
   for budget in spending['budgets']:
-    if budget['name'] != 'Other':
+    if budget['name'] != 'Unbudgeted':
       budget_categories.extend(budget['categories'])
   budget_categories.append('00000000') # the special category representing total spending for period
 
@@ -184,7 +184,7 @@ def projected_spend_to_budgets(userid, session):
     queries = []
     queries.append( AverageMonthSpend.user_id.like(userid) )
     # queries.append( AverageMonthSpend.period == PERIOD )
-    if budget['name'] == 'Other':
+    if budget['name'] == 'Unbudgeted':
       queries.append( AverageMonthSpend.category_uid.notin_(budget_categories) )
     else:
       queries.append( AverageMonthSpend.category_uid.in_(budget['categories']) )
@@ -270,30 +270,61 @@ def compute_income(userid, session):
 
   return True
 
+def do_notice(userid, session):
+  schoolgoal = SAMPLE_GOALS[0]
+  notice = {
+    "msg": "Need to do some back-to-school shopping?", 
+    "type": "goal", 
+    "data": schoolgoal, 
+    "read": False, 
+    "rejected": False, 
+    "deferred": False
+  }
+  user = session.query(User).get(userid)
+  if not user.notices or len(user.notices) < 1:
+    user.notices = [ notice ]
+  else:
+    user.notices = [ notice ] + user.notices
+  user.notices_update = datetime.datetime.today()
+  flag_modified(user, "notices")
+  session.commit()
+
 def expense_job():
   session = getsession()
+  applog( {"msg":"starting job", "service":"aielf", "function":"expense_job"} , session )
   # userid = 'auth0|5b021d905d7d1617fd7dfadb'
   for user in session.query(User):
     userid = user.id
     success = compute_expenses(userid, session)
     success = compute_projected_spend(userid, session)
     success = projected_spend_to_budgets(userid, session)
+  applog( {"msg":"success", "service":"aielf", "function":"expense_job"} , session )
   session.close()
-  applog( {"msg":"success", "service":"aielf", "function":"expense_job"} )
 
 def income_job():
   session = getsession()
-  userid = 'auth0|5b021d905d7d1617fd7dfadb'
-  success = compute_income(userid, session)
-  # for user in session.query(User):
-  #   userid = user.id
-  #   success = compute_income(userid, session)
+  applog( {"msg":"starting job", "service":"aielf", "function":"income_job"} , session )
+  # userid = 'auth0|5b021d905d7d1617fd7dfadb'
+  for user in session.query(User):
+    userid = user.id
+    success = compute_income(userid, session)
+  applog( {"msg":"success", "service":"aielf", "function":"income_job"} , session )
   session.close()
-  applog( {"msg":"success", "service":"aielf", "function":"income_job"} )
 
-# income_job()
+def notice_job():
+  session = getsession()
+  applog( {"msg":"starting job", "service":"aielf", "function":"income_job"}, session )
+  for user in session.query(User):
+    userid = user.id
+    success = do_notice(userid, session)
+  applog( {"msg":"success", "service":"aielf", "function":"notice_job"}, session )
+  session.close()
+
+# notice_job()
+
 schedule.every().day.at("11:35").do(expense_job)
 schedule.every().sunday.at("04:24").do(income_job)
+schedule.every().day.at("03:35").do(notice_job)
 
 while True:
   schedule.run_pending()
