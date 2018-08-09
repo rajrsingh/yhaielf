@@ -38,6 +38,7 @@ class Item(Base):
         user_id = Column(Text(), ForeignKey('users.id'), primary_key=True)
         item_id = Column(Text(), primary_key=True)
         access_token = Column(Text(), nullable=False)
+        institution = Column(Text(), nullable=True)
         created_on = Column(DateTime(), default=datetime.datetime.utcnow())
 
 class Transaction(Base):
