@@ -252,12 +252,17 @@ def compute_income(userid, session):
 
   # Compute average monthly income by period using allincomes list
   # (which is a 4 periods x 4 MONTHS_MEASURED list) and save to DB
+  # DROP HIGHEST AND LOWEST MONTH AND AVERAGE THE OTHERS
   total_avg_inc = 0
   for i in range(MONTHS_MEASURED):
-    periodinc = 0
+    periodincs = []
     for inc in allincomes:
-      periodinc += inc[i]
-    avg_inc = int( periodinc / MONTHS_MEASURED )
+      periodincs.append(inc[i])
+    periodincs.sort()
+    periodincs = periodincs[ 1:(len(periodincs)-1) ]
+
+    periodinc = sum( periodincs )
+    avg_inc = int( periodinc / (MONTHS_MEASURED-2) )
     a = AverageMonthIncome( user_id=userid, amount=avg_inc, period=i+1 )
     session.merge( a )
     total_avg_inc += avg_inc
@@ -320,12 +325,12 @@ def notice_job():
   applog( {"msg":"success", "service":"aielf", "function":"notice_job"}, session )
   session.close()
 
-# notice_job()
+income_job()
 
-schedule.every().day.at("11:35").do(expense_job)
-schedule.every().sunday.at("04:24").do(income_job)
-schedule.every().day.at("03:35").do(notice_job)
+# schedule.every().day.at("11:35").do(expense_job)
+# schedule.every().sunday.at("04:24").do(income_job)
+# schedule.every().day.at("03:35").do(notice_job)
 
-while True:
-  schedule.run_pending()
-  time.sleep(100)
+# while True:
+#   schedule.run_pending()
+#   time.sleep(100)
