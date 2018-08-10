@@ -275,16 +275,49 @@ def compute_income(userid, session):
 
   return True
 
+def notice_low_balance(userid, session):
+  user = session.query(User).get(userid)
+  accounts = user.balances
+  for account in accounts:
+    if account['primary'] == True and account['balances']['current'] < (user.income * 0.03):
+      notice = {
+      "msg": "Low primary account balance", 
+      "type": "warning", 
+      "data":  None, 
+      "read": False, 
+      "rejected": False, 
+      "deferred": False
+      }
+    return notice
+  return None
+
+def notice_back_to_school(userid, session):
+  user = session.query(User).get(userid)
+  if user['personal']['kids'] and user['personal']['kids'] > 0:
+    todaydt = datetime.datetime.today()
+    if formatDate(todaydt,"%m-%d") == '08-17':
+      notice = {
+      "msg": "Need to do some back-to-school shopping?", 
+      "type": "goal", 
+      "data":  SAMPLE_GOALS[0], 
+      "read": False, 
+      "rejected": False, 
+      "deferred": False
+      }
+    return notice
+  return None
+
 def do_notice(userid, session):
-  schoolgoal = SAMPLE_GOALS[0]
-  notice = {
-    "msg": "Need to do some back-to-school shopping?", 
-    "type": "goal", 
-    "data": schoolgoal, 
-    "read": False, 
-    "rejected": False, 
-    "deferred": False
-  }
+  notices = []
+
+  n = notice_back_to_school( userid, session )
+  if n:
+    notices.append(n)
+
+  n = notice_low_balance( userid, session )
+  if n:
+    notices.append(n)
+
   user = session.query(User).get(userid)
   if not user.notices or len(user.notices) < 1:
     user.notices = [ notice ]
@@ -325,12 +358,12 @@ def notice_job():
   applog( {"msg":"success", "service":"aielf", "function":"notice_job"}, session )
   session.close()
 
-income_job()
+# income_job()
 
-# schedule.every().day.at("11:35").do(expense_job)
-# schedule.every().sunday.at("04:24").do(income_job)
-# schedule.every().day.at("03:35").do(notice_job)
+schedule.every().day.at("11:35").do(expense_job)
+schedule.every().sunday.at("04:24").do(income_job)
+schedule.every().day.at("03:35").do(notice_job)
 
-# while True:
-#   schedule.run_pending()
-#   time.sleep(100)
+while True:
+  schedule.run_pending()
+  time.sleep(100)
