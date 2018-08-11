@@ -284,9 +284,10 @@ def notice_low_balance(userid, session):
       "msg": "Low primary account balance", 
       "type": "warning", 
       "data":  None, 
-      "read": False, 
+      "acted": False, 
       "rejected": False, 
-      "deferred": False
+      "deferred": 0, 
+      "timestamp": datetime.datetime.today()
       }
     return notice
   return None
@@ -295,14 +296,15 @@ def notice_back_to_school(userid, session):
   user = session.query(User).get(userid)
   if user['personal']['kids'] and user['personal']['kids'] > 0:
     todaydt = datetime.datetime.today()
-    if formatDate(todaydt,"%m-%d") == '08-17':
+    if formatDate(todaydt,"%m-%d") == '08-10':
       notice = {
       "msg": "Need to do some back-to-school shopping?", 
       "type": "goal", 
       "data":  SAMPLE_GOALS[0], 
-      "read": False, 
+      "acted": False, 
       "rejected": False, 
-      "deferred": False
+      "deferred": 0, 
+      "timestamp": datetime.datetime.today()
       }
     return notice
   return None
