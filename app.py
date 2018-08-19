@@ -60,22 +60,20 @@ def applog(json_msg, session):
 def compute_expenses(userid, session):
   """ Compute spending per period over the last 4 months for every transaction category and save to DB """
 
-  session = getsession()
-
-  ## get oldest transaction date
-  # t = session.query(Transaction).order_by(Transaction.t_date.asc()).limit(1).first()
-  # startdate = mkFirstOfNextMonth(t.t_date)
-  # get latest transaction date
-  t = session.query(Transaction).order_by(Transaction.t_date.desc()).limit(1).first()
-  endate = (t.t_date)
-  ## get date 4 months ago
-  startdate = mkFirstOfMonth(endate) - relativedelta(months=MONTHS_MEASURED)
-
   # get all the user's item ids
   item_ids = []
   itemrecs = session.query(Item).filter(Item.user_id.like(userid)).all()
   for ir in itemrecs:
     item_ids.append(ir.item_id)
+
+  ## get oldest transaction date
+  # t = session.query(Transaction).order_by(Transaction.t_date.asc()).limit(1).first()
+  # startdate = mkFirstOfNextMonth(t.t_date)
+  # get latest transaction date
+  t = session.query(Transaction).filter(Transaction.item_id.in_(item_ids)).order_by(Transaction.t_date.desc()).limit(1).first()
+  endate = (t.t_date)
+  ## get date 4 months ago
+  startdate = mkFirstOfMonth(endate) - relativedelta(months=MONTHS_MEASURED)
 
   daybreaks = mkDayBreaks(startdate) # [1st, 9th, 17th, 25th, 1st]
   while daybreaks[4] <= endate: # handle a month at a time
@@ -362,9 +360,12 @@ def notice_job():
 
 # income_job()
 
-schedule.every().day.at("11:35").do(expense_job)
-schedule.every().sunday.at("04:24").do(income_job)
+# schedule.every().day.at("11:35").do(expense_job)
+# schedule.every().sunday.at("04:24").do(income_job)
 schedule.every().day.at("03:35").do(notice_job)
+schedule.every().day.at("21:21").do(expense_job)
+schedule.every().day.at("02:21").do(income_job)
+
 
 while True:
   schedule.run_pending()
