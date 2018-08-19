@@ -11,7 +11,6 @@ class User(Base):
 
         __tablename__ = 'users'
         id = Column(Text(), primary_key=True)
-        email = Column(Text(), nullable=False)
         active = Column(BOOLEAN(), default=True)
         balances = Column(JSON)
         balances_update = Column(DateTime())
