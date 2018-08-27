@@ -1,4 +1,4 @@
-import os, datetime, time, json, schedule
+import os, datetime, time, json, schedule, random
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.sql import label
 from sqlalchemy import create_engine, func
@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
 from models import *
 from samplegoals import *
+from notices_inspire import *
 
 engine = create_engine('postgresql+psycopg2://%s:%s@%s/%s' % (os.environ['DBUSER'], os.environ['DBPASS'], os.environ['DBHOST'], os.environ['DBNAME']))
 MONTHS_MEASURED = 4
@@ -285,14 +286,14 @@ def notice_low_balance(userid, session):
       "acted": False, 
       "rejected": False, 
       "deferred": 0, 
-      "timestamp": datetime.datetime.today()
+      "timestamp": datetime.datetime.today().timestamp() * 1000
       }
-    return notice
+      return notice
   return None
 
 def notice_back_to_school(userid, session):
   user = session.query(User).get(userid)
-  if user['personal']['kids'] and user['personal']['kids'] > 0:
+  if 'kids' in user.personal and int(user.personal['kids']) > 0:
     todaydt = datetime.datetime.today()
     if formatDate(todaydt,"%m-%d") == '08-10':
       notice = {
@@ -302,13 +303,48 @@ def notice_back_to_school(userid, session):
       "acted": False, 
       "rejected": False, 
       "deferred": 0, 
-      "timestamp": datetime.datetime.today()
+      "timestamp": datetime.datetime.today().timestamp() * 1000
       }
+      return notice
+  return None
+
+def notice_holiday(userid, session):
+  user = session.query(User).get(userid)
+  todaydt = datetime.datetime.today()
+  d = formatDate(todaydt,"%m-%d")
+  if d == '10-02' or d == '03-02':
+    notice = {
+    "msg": "Need to save for the holidays?", 
+    "type": "goal", 
+    "data":  SAMPLE_GOALS[1], 
+    "acted": False, 
+    "rejected": False, 
+    "deferred": 0, 
+    "timestamp": datetime.datetime.today().timestamp() * 1000
+    }
     return notice
   return None
 
+def notice_inspirational(userid, session):
+  user = session.query(User).get(userid)
+  todaydt = datetime.datetime.today()
+  notice = {
+    "msg": "An inspiring money management tip", 
+    "type": "informational", 
+    "data":  NOTICES_INSPIRE[random.randint(0, len(NOTICES_INSPIRE)-1)], 
+    "acted": False, 
+    "rejected": False, 
+    "deferred": 0, 
+    "timestamp": datetime.datetime.today().timestamp() * 1000
+  }
+  return notice
+
 def do_notice(userid, session):
   notices = []
+
+  n = notice_holiday( userid, session )
+  if n:
+    notices.append(n)
 
   n = notice_back_to_school( userid, session )
   if n:
@@ -318,11 +354,18 @@ def do_notice(userid, session):
   if n:
     notices.append(n)
 
+  # default notices
+  if len(notices) < 1:
+    n = notice_inspirational( userid, session )
+    if n:
+      notices.append(n)
+
   user = session.query(User).get(userid)
   if not user.notices or len(user.notices) < 1:
-    user.notices = [ notice ]
+    user.notices = notices
   else:
-    user.notices = [ notice ] + user.notices
+    user.notices = notices + user.notices
+  
   user.notices_update = datetime.datetime.today()
   flag_modified(user, "notices")
   session.commit()
@@ -359,14 +402,15 @@ def notice_job():
   session.close()
 
 # income_job()
+notice_job()
 
 # schedule.every().day.at("11:35").do(expense_job)
 # schedule.every().sunday.at("04:24").do(income_job)
-schedule.every().day.at("03:35").do(notice_job)
-schedule.every().day.at("21:21").do(expense_job)
-schedule.every().day.at("02:21").do(income_job)
+# schedule.every().day.at("03:35").do(notice_job)
+# schedule.every().day.at("21:21").do(expense_job)
+# schedule.every().day.at("02:21").do(income_job)
 
 
-while True:
-  schedule.run_pending()
-  time.sleep(100)
+# while True:
+#   schedule.run_pending()
+#   time.sleep(100)
