@@ -10,6 +10,7 @@ from notices_inspire import *
 
 engine = create_engine('postgresql+psycopg2://%s:%s@%s/%s' % (os.environ['DBUSER'], os.environ['DBPASS'], os.environ['DBHOST'], os.environ['DBNAME']))
 MONTHS_MEASURED = 4
+SPECIAL_GOAL_SPEND = "1111"
 
 def mkDateTime(dateString,strFormat="%Y-%m-%d"):
   # Expects "YYYY-MM-DD" string
@@ -85,7 +86,8 @@ def compute_expenses(userid, session):
       queries.append( Transaction.amount > 0 )
       queries.append( Transaction.item_id.in_(item_ids) )
       # ignore transfers and credit card payments (that would be double-counting)
-      queries.append( Transaction.category_uid.notin_(["21001000","21006000","16001000"]) )
+      # also ignore spending on goals
+      queries.append( Transaction.category_uid.notin_(["21001000","21006000","16001000",SPECIAL_GOAL_SPEND]) )
       q = session.query(Transaction.category_uid, func.sum(Transaction.amount))
       ts = q.filter(*queries).group_by(Transaction.category_uid).all()
       totamt = 0
@@ -166,7 +168,7 @@ def projected_spend_to_budgets(userid, session):
   spending = user.spending
   ## build a list of categories in budgets to skip 
   ## when computing budget for Unbudgeted
-  budget_categories = []
+  budget_categories = [SPECIAL_GOAL_SPEND]
   for budget in spending['budgets']:
     if budget['name'] != 'Unbudgeted':
       budget_categories.extend(budget['categories'])
@@ -399,7 +401,7 @@ def notice_job():
   applog( {"msg":"success", "service":"aielf", "function":"notice_job"}, session )
   session.close()
 
-# income_job()
+# expense_job()
 # notice_job()
 
 # # schedule.every().day.at("11:35").do(expense_job)
