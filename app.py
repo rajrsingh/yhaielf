@@ -341,6 +341,9 @@ def notice_inspirational(userid, session):
 
 def do_notice(userid, session):
   notices = []
+  user = session.query(User).get(userid)
+  if user.notices and len(user.notices) > 0:
+    notices = user.notices
 
   n = notice_holiday( userid, session )
   if n:
@@ -360,12 +363,7 @@ def do_notice(userid, session):
     if n:
       notices.append(n)
 
-  user = session.query(User).get(userid)
-  if not user.notices or len(user.notices) < 1:
-    user.notices = notices
-  else:
-    user.notices = notices + user.notices
-  
+  user.notices = notices  
   user.notices_update = datetime.datetime.today()
   flag_modified(user, "notices")
   session.commit()
@@ -402,15 +400,15 @@ def notice_job():
   session.close()
 
 # income_job()
-notice_job()
+# notice_job()
 
-# schedule.every().day.at("11:35").do(expense_job)
-# schedule.every().sunday.at("04:24").do(income_job)
-# schedule.every().day.at("03:35").do(notice_job)
-# schedule.every().day.at("21:21").do(expense_job)
-# schedule.every().day.at("02:21").do(income_job)
+# # schedule.every().day.at("11:35").do(expense_job)
+# # schedule.every().sunday.at("04:24").do(income_job)
+schedule.every().day.at("03:35").do(notice_job)
+schedule.every().day.at("21:21").do(expense_job)
+schedule.every().day.at("02:21").do(income_job)
 
 
-# while True:
-#   schedule.run_pending()
-#   time.sleep(100)
+while True:
+  schedule.run_pending()
+  time.sleep(100)
