@@ -65,14 +65,20 @@ def compute_expenses(userid, session):
   # get all the user's item ids
   item_ids = []
   itemrecs = session.query(Item).filter(Item.user_id.like(userid)).all()
+  if itemrecs is None:
+    return
   for ir in itemrecs:
     item_ids.append(ir.item_id)
+  if len(item_ids) < 1:
+    return
 
   ## get oldest transaction date
   # t = session.query(Transaction).order_by(Transaction.t_date.asc()).limit(1).first()
   # startdate = mkFirstOfNextMonth(t.t_date)
   # get latest transaction date
   t = session.query(Transaction).filter(Transaction.item_id.in_(item_ids)).order_by(Transaction.t_date.desc()).limit(1).first()
+  if t is None:
+    return
   endate = (t.t_date)
   ## get date 4 months ago
   startdate = mkFirstOfMonth(endate) - relativedelta(months=MONTHS_MEASURED)
@@ -115,6 +121,8 @@ def compute_projected_spend(userid, session):
 
   # get latest transaction date
   t = session.query(Transaction).order_by(Transaction.t_date.desc()).limit(1).first()
+  if t is None:
+    return
   endate = (t.t_date)
   four_months_ago = mkFirstOfMonth(endate) - relativedelta(months=MONTHS_MEASURED)
 
@@ -207,6 +215,8 @@ def projected_spend_to_budgets(userid, session):
 def compute_income(userid, session):
   """ calculate user's monthly and pillarperiod income """
   t = session.query(Transaction).order_by(Transaction.t_date.desc()).limit(1).first()
+  if t is None:
+    return
   endate = (t.t_date)
   ##get date 4 months ago
   startdate = mkFirstOfMonth(endate) - relativedelta(months=MONTHS_MEASURED)
@@ -214,8 +224,12 @@ def compute_income(userid, session):
   # get all the user's item ids
   item_ids = []
   itemrecs = session.query(Item).filter(Item.user_id.like(userid)).all()
+  if itemrecs is None:
+    return
   for ir in itemrecs:
     item_ids.append(ir.item_id)
+  if len(item_ids) < 1:
+    return
 
   allincomes = []
   daybreaks = mkDayBreaks(startdate) # [1st, 9th, 17th, 25th, 1st]
@@ -402,6 +416,7 @@ def notice_job():
   session.close()
 
 # expense_job()
+# income_job()
 # notice_job()
 
 # # schedule.every().day.at("11:35").do(expense_job)
