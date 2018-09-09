@@ -10,7 +10,7 @@ from notices_inspire import *
 
 engine = create_engine('postgresql+psycopg2://%s:%s@%s/%s' % (os.environ['DBUSER'], os.environ['DBPASS'], os.environ['DBHOST'], os.environ['DBNAME']))
 MONTHS_MEASURED = 4
-SPECIAL_GOAL_SPEND = "1111"
+from pillarconstants import *
 
 def mkDateTime(dateString,strFormat="%Y-%m-%d"):
   # Expects "YYYY-MM-DD" string
