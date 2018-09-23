@@ -115,3 +115,12 @@ class AverageMonthIncome(Base):
     user_id = Column(Text(), ForeignKey('users.id'), primary_key=True)
     amount = Column(Numeric(12,2), nullable=False)
     period = Column(Integer, primary_key=True)
+
+class NoticeArchive(Base):
+        """Database model for processed notices."""
+
+        __tablename__ = 'noticearchive'
+        id = Column(Integer, primary_key=True)
+        user_id = Column(Text(), ForeignKey('users.id'))
+        notice = Column(JSON)
+        created_on = Column(DateTime(), default=datetime.datetime.utcnow())

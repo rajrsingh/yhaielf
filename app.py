@@ -290,28 +290,108 @@ def compute_income(userid, session):
 
   return True
 
-def notice_low_balance(userid, session):
-  user = session.query(User).get(userid)
+def notice_is_pending(user, notice):
+  # check if this notice is in the user's "inbox"
+  for n in user.notices:
+    if n:
+      if n['type'] == 'inspirational':
+        if 'data' in n and n['data']['name'] == notice['name'] and n['data']['msg'] == notice['msg']:
+          return True
+      else:
+        if n['msg'] == notice['msg'] and n['type'] == notice['type']:
+          return True
+  return False
+
+def notice_has_seen(user, notice, session, days_since=14):
+  # check if this notice is in the user's "inbox"
+  is_pending = notice_is_pending(user, notice)
+  if is_pending:
+    return True
+
+  # now check if it has been archived in the last `days_since` days
+  d = datetime.datetime.today()
+  d = d - relativedelta(days=days_since)
+  oldnotices = session.query(NoticeArchive).filter(NoticeArchive.user_id.like(user.id)).filter(NoticeArchive.created_on>d).all()
+  for n in oldnotices:
+    if n.notice['data']['name'] == notice['data']['name'] and n.notice['data']['msg'] == notice['data']['msg']:
+      return True
+
+  return False
+
+def notice_has_rejected(user, notice, session, days_since=90):
+  # Check if notice has been rejected in the last `days_since` days
+  d = datetime.datetime.today()
+  d = d - relativedelta(days=days_since)
+  oldnotices = session.query(NoticeArchive).filter(NoticeArchive.user_id.like(user.id)).all()
+  for n in oldnotices:
+    if n.created_on > d:
+      if n.notice['rejected']:
+        if n.notice['data']['name'] == notice['name'] and n.notice['data']['msg'] == notice['msg']:
+          return True
+
+  return False
+
+def notice_debt_goal_behind_schedule(user):
+  save_target = user.spending['save_target']
+  inthehole = 0
+  for goal in user.goals:
+    goalattainmentmonths = 0
+
+    if goal['amount'] != goal['progress']:
+      attained = False
+      goalattainmentmonths = 1
+      neededsavings = goal['amount'] = goal['progress']
+      savings = inthehole
+      while not attained:
+        savings += save_target
+        if (savings - neededsavings) >= 0:
+          inthehole -= neededsavings
+          attained = True
+        else:
+          goalattainmentmonths = goalattainmentmonths + 1
+
+    # see if months needed to attain goal match what the user has targeted
+    if goal['type'] == 'debt':
+      goaldate = mkDateTime(goal['due_date']) + relativedelta(months=1) # give wiggle room of 1 month
+      ourprojectedgoaldate = datetime.datetime.today() + relativedelta(months=goalattainmentmonths)
+      if ourprojectedgoaldate > goaldate:
+        notice = {
+        "msg": "Your debt-free goal will NOT happen at this savings level. Increase it on the Goals screen.", 
+        "type": "warning", 
+        "data":  None, 
+        "acted": False, 
+        "rejected": False, 
+        "deferred": 0, 
+        "priority": 8, 
+        "timestamp": datetime.datetime.today().timestamp() * 1000
+        }
+        print(user.id)
+        return notice
+  return None
+        
+def notice_low_balance(user):
   accounts = user.balances
-  for account in accounts:
-    if account['primary'] == True and account['balances']['current'] < (user.income * 0.03):
-      notice = {
-      "msg": "Low primary account balance", 
-      "type": "warning", 
-      "data":  None, 
-      "acted": False, 
-      "rejected": False, 
-      "deferred": 0, 
-      "timestamp": datetime.datetime.today().timestamp() * 1000
-      }
-      return notice
+  if len(accounts) > 0:
+    for account in accounts:
+      if 'primary' in account and 'balances' in account:
+        if account['primary'] == True and account['balances']['current'] < (user.income * 0.03):
+          notice = {
+          "msg": "Low primary account balance", 
+          "type": "warning", 
+          "data":  None, 
+          "acted": False, 
+          "rejected": False, 
+          "deferred": 0, 
+          "priority": 10, 
+          "timestamp": datetime.datetime.today().timestamp() * 1000
+          }
+          return notice
   return None
 
-def notice_back_to_school(userid, session):
-  user = session.query(User).get(userid)
+def notice_back_to_school(user, session):
   if 'kids' in user.personal and int(user.personal['kids']) > 0:
     todaydt = datetime.datetime.today()
-    if formatDate(todaydt,"%m-%d") == '08-10':
+    if formatDate(todaydt,"%m") == '08':
       notice = {
       "msg": "Need to do some back-to-school shopping?", 
       "type": "goal", 
@@ -319,30 +399,31 @@ def notice_back_to_school(userid, session):
       "acted": False, 
       "rejected": False, 
       "deferred": 0, 
+      "priority": 5, 
       "timestamp": datetime.datetime.today().timestamp() * 1000
       }
-      return notice
+      if not notice_has_seen(user, notice, session, 14) and not notice_has_rejected(user, notice, session):
+        return notice
   return None
 
-def notice_holiday(userid, session):
-  user = session.query(User).get(userid)
+def notice_holiday():
   todaydt = datetime.datetime.today()
-  d = formatDate(todaydt,"%m-%d")
-  if d == '10-02' or d == '03-02':
+  d = formatDate(todaydt,"%m")
+  if d == '10' or d == '03':
     notice = {
-    "msg": "Need to save for the holidays?", 
+    "msg": "Don't forget to save for holiday spending.", 
     "type": "goal", 
     "data":  SAMPLE_GOALS[1], 
     "acted": False, 
     "rejected": False, 
     "deferred": 0, 
+    "priority": 6, 
     "timestamp": datetime.datetime.today().timestamp() * 1000
     }
     return notice
   return None
 
-def notice_inspirational(userid, session):
-  user = session.query(User).get(userid)
+def notice_inspirational(user, session):
   todaydt = datetime.datetime.today()
   notice = {
     "msg": "An inspiring money management tip", 
@@ -351,33 +432,42 @@ def notice_inspirational(userid, session):
     "acted": False, 
     "rejected": False, 
     "deferred": 0, 
+    "priority": 1, 
     "timestamp": datetime.datetime.today().timestamp() * 1000
   }
-  return notice
+  if not notice_has_seen(user, notice, session, 21):
+    return notice
+  return None
 
-def do_notice(userid, session):
+def do_notice(user, session):
   notices = []
-  user = session.query(User).get(userid)
   if user.notices and len(user.notices) > 0:
     notices = user.notices
 
-  n = notice_holiday( userid, session )
+  n = notice_low_balance( user )
   if n:
     notices.append(n)
 
-  n = notice_back_to_school( userid, session )
+  n = notice_debt_goal_behind_schedule( user )
+  if n and not notice_is_pending( user, n ):
+    notices.append(n)
+
+  n = notice_holiday()
   if n:
     notices.append(n)
 
-  n = notice_low_balance( userid, session )
+  n = notice_back_to_school( user, session )
   if n:
     notices.append(n)
 
   # default notices
   if len(notices) < 1:
-    n = notice_inspirational( userid, session )
+    n = notice_inspirational( user, session)
     if n:
       notices.append(n)
+  else:
+    # sort by priority
+    notices.sort( key=lambda x: x['priority'], reverse=True )
 
   user.notices = notices  
   user.notices_update = datetime.datetime.today()
@@ -410,22 +500,21 @@ def notice_job():
   session = getsession()
   applog( {"msg":"starting job", "service":"aielf", "function":"income_job"}, session )
   for user in session.query(User):
-    userid = user.id
-    success = do_notice(userid, session)
+    success = do_notice(user, session)
   applog( {"msg":"success", "service":"aielf", "function":"notice_job"}, session )
   session.close()
 
 # expense_job()
 # income_job()
-# notice_job()
+notice_job()
 
 # # schedule.every().day.at("11:35").do(expense_job)
 # # schedule.every().sunday.at("04:24").do(income_job)
-schedule.every().day.at("03:35").do(notice_job)
-schedule.every().day.at("21:21").do(expense_job)
-schedule.every().day.at("02:21").do(income_job)
+# schedule.every().day.at("03:35").do(notice_job)
+# schedule.every().day.at("21:21").do(expense_job)
+# schedule.every().day.at("02:21").do(income_job)
 
 
-while True:
-  schedule.run_pending()
-  time.sleep(100)
+# while True:
+#   schedule.run_pending()
+#   time.sleep(100)
