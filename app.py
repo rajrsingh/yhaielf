@@ -290,9 +290,9 @@ def compute_income(userid, session):
 
   return True
 
-def notice_is_pending(user, notice):
+def notice_is_pending(notices, notice):
   # check if this notice is in the user's "inbox"
-  for n in user.notices:
+  for n in notices:
     if n:
       if n['type'] == 'inspirational':
         if 'data' in n and n['data']['name'] == notice['name'] and n['data']['msg'] == notice['msg']:
@@ -304,7 +304,7 @@ def notice_is_pending(user, notice):
 
 def notice_has_seen(user, notice, session, days_since=14):
   # check if this notice is in the user's "inbox"
-  is_pending = notice_is_pending(user, notice)
+  is_pending = notice_is_pending(user.notices, notice)
   if is_pending:
     return True
 
@@ -330,6 +330,14 @@ def notice_has_rejected(user, notice, session, days_since=90):
           return True
 
   return False
+
+def notices_deferred(user, session):
+  deferredn = []
+  oldnotices = session.query(NoticeArchive).filter(NoticeArchive.user_id.like(user.id)).all()
+  for n in oldnotices:
+    if n.notice['deferred'] > 0 and n.notice['rejected'] == False:
+      deferredn.append(n.notice)
+  return deferredn  
 
 def notice_debt_goal_behind_schedule(user):
   save_target = user.spending['save_target']
@@ -365,7 +373,6 @@ def notice_debt_goal_behind_schedule(user):
         "priority": 8, 
         "timestamp": datetime.datetime.today().timestamp() * 1000
         }
-        print(user.id)
         return notice
   return None
         
@@ -411,7 +418,7 @@ def notice_holiday():
   d = formatDate(todaydt,"%m")
   if d == '10' or d == '03':
     notice = {
-    "msg": "Don't forget to save for holiday spending.", 
+    "msg": "Last year, Americans spent about $967.13 on the holidays. Don't forget to save for it.", 
     "type": "goal", 
     "data":  SAMPLE_GOALS[1], 
     "acted": False, 
@@ -444,12 +451,16 @@ def do_notice(user, session):
   if user.notices and len(user.notices) > 0:
     notices = user.notices
 
+  n = notices_deferred(user, session)
+  if n and len(n)>0:
+    notices += n
+
   n = notice_low_balance( user )
   if n:
     notices.append(n)
 
   n = notice_debt_goal_behind_schedule( user )
-  if n and not notice_is_pending( user, n ):
+  if n and not notice_is_pending( notices, n ):
     notices.append(n)
 
   n = notice_holiday()
@@ -506,15 +517,15 @@ def notice_job():
 
 # expense_job()
 # income_job()
-notice_job()
+# notice_job()
 
-# # schedule.every().day.at("11:35").do(expense_job)
-# # schedule.every().sunday.at("04:24").do(income_job)
-# schedule.every().day.at("03:35").do(notice_job)
-# schedule.every().day.at("21:21").do(expense_job)
-# schedule.every().day.at("02:21").do(income_job)
+# schedule.every().day.at("11:35").do(expense_job)
+# schedule.every().sunday.at("04:24").do(income_job)
+schedule.every().day.at("03:35").do(notice_job)
+schedule.every().day.at("21:21").do(expense_job)
+schedule.every().day.at("02:21").do(income_job)
 
 
-# while True:
-#   schedule.run_pending()
-#   time.sleep(100)
+while True:
+  schedule.run_pending()
+  time.sleep(100)
